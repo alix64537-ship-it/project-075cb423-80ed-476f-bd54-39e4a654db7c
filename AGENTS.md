@@ -32,5 +32,5 @@ use the editor.
 ## Project rules
 
 - Marketplace data lives in `src/lib/listings.ts` (types, mock data, filter/sort, ₸ formatting) and UI in `src/components/market/`; keep business rules there so they stay unit-testable.
-- Listings, favorites and login are in-memory page state for the MVP — no backend yet; swap the store, not the components, when persistence arrives.
+- Lovable Cloud is connected, but listings, favorites and login are still in-memory page state; when moving them to the database, swap the store, not the components.
 - Render posting dates only after hydration (see `RelativeDate`): server and browser time zones differ.
