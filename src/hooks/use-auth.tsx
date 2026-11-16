@@ -1,3 +1,4 @@
+import type * as React from "react";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@supabase/supabase-js";
@@ -13,7 +14,19 @@ type AuthState = {
   signOut: () => Promise<void>;
 };
 
-const AuthContext = createContext<AuthState | null>(null);
+// Reuse one context object across hot reloads: a re-evaluated module would otherwise create a
+// second context that the already-mounted provider does not supply.
+const globalKey = "__saudaAuthContext";
+const store = globalThis as unknown as Record<string, React.Context<AuthState | null> | undefined>;
+const AuthContext = (store[globalKey] ??= createContext<AuthState | null>(null));
+
+const SIGNED_OUT: AuthState = {
+  user: null,
+  profile: null,
+  ready: false,
+  displayName: "",
+  signOut: async () => {},
+};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -70,6 +83,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
+  if (!ctx) {
+    // Render as signed out instead of blanking the page; the provider normally wraps every route.
+    if (import.meta.env.DEV) console.warn("useAuth rendered outside AuthProvider");
+    return SIGNED_OUT;
+  }
   return ctx;
 }
