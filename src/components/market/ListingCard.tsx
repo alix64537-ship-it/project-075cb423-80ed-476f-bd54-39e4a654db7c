@@ -70,6 +70,9 @@ export function ListingCard({ listing, favorite, onToggleFavorite, onOpen }: Pro
               <Icon className="size-5 sm:size-6" />
             </span>
             <div className="min-w-0 max-w-full">
+              {listing.schedule && (
+                <p className="mb-2 hidden line-clamp-2 text-sm font-medium leading-snug sm:[display:-webkit-box]">{listing.schedule}</p>
+              )}
               <p className="truncate text-xs font-medium opacity-80">{listing.company}</p>
               <p className="text-[11px] font-semibold uppercase tracking-wide">{listing.category}</p>
             </div>

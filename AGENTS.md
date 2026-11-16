@@ -28,3 +28,9 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## Project rules
+
+- Marketplace data lives in `src/lib/listings.ts` (types, mock data, filter/sort, ₸ formatting) and UI in `src/components/market/`; keep business rules there so they stay unit-testable.
+- Listings, favorites and login are in-memory page state for the MVP — no backend yet; swap the store, not the components, when persistence arrives.
+- Render posting dates only after hydration (see `RelativeDate`): server and browser time zones differ.

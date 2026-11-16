@@ -91,7 +91,7 @@ export function ListingDetail({ listing, onOpenChange, favorite, onToggleFavorit
     <Dialog open={!!listing} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[100dvh] max-w-5xl flex-col gap-0 overflow-hidden p-0 sm:h-auto sm:max-h-[92vh] sm:rounded-2xl">
         <div className="flex-1 overflow-y-auto">
-          <div className="grid gap-6 p-4 pt-12 sm:p-6 sm:pt-12 md:grid-cols-[1.4fr_1fr]">
+          <div className="grid grid-cols-1 gap-6 p-4 pt-14 sm:p-6 sm:pt-14 md:grid-cols-[1.4fr_1fr]">
             <div className="min-w-0 space-y-5">
               <Gallery key={listing.id} listing={listing} />
               <section className="space-y-2">
@@ -116,7 +116,7 @@ export function ListingDetail({ listing, onOpenChange, favorite, onToggleFavorit
               </dl>
             </div>
 
-            <aside className="space-y-4 md:sticky md:top-0 md:self-start">
+            <aside className="min-w-0 space-y-4 md:sticky md:top-0 md:self-start">
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <CalendarClock className="size-3.5" />
@@ -161,7 +161,7 @@ export function ListingDetail({ listing, onOpenChange, favorite, onToggleFavorit
                   ) : (
                     <Button size="lg" onClick={() => setRevealed(true)} className="h-12 w-full rounded-xl text-base shadow-cta">
                       <Phone /> Показать телефон
-                      <span className="font-normal opacity-80">{maskPhone(listing.phone)}</span>
+                      <span className="text-sm font-normal opacity-80">{maskPhone(listing.phone)}</span>
                     </Button>
                   )}
                   <div className="grid grid-cols-2 gap-2">
