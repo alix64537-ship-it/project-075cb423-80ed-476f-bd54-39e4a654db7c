@@ -30,9 +30,9 @@ export type Listing = {
   /** Price for goods, lower salary bound for jobs. null = договорная */
   price: number | null;
   /** Upper salary bound for jobs */
-  priceMax?: number | null;
-  priceFrom?: boolean;
-  priceSuffix?: string;
+  priceMax?: number | null | undefined;
+  priceFrom?: boolean | undefined;
+  priceSuffix?: string | undefined;
   description: string;
   images: string[];
   createdAt: number;
@@ -40,12 +40,12 @@ export type Listing = {
     name: string;
     type: string;
     since: string;
-    rating?: number;
+    rating?: number | undefined;
   };
   phone: string;
-  telegram?: string;
-  company?: string;
-  schedule?: string;
+  telegram?: string | undefined;
+  company?: string | undefined;
+  schedule?: string | undefined;
 };
 
 const HOUR = 60 * 60 * 1000;
@@ -75,7 +75,7 @@ export type Filters = {
   priceFrom: number | null;
   priceTo: number | null;
   sort: SortKey;
-  onlyIds?: Set<string> | null;
+  onlyIds?: Set<string> | null | undefined;
 };
 
 /** Value used for price filtering & sorting: for salary ranges, the upper bound counts. */

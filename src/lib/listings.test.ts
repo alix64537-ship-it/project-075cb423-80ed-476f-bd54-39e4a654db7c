@@ -40,7 +40,7 @@ describe("filterListings", () => {
   });
   it("sorts cheaper first", () => {
     const r = filterListings(MOCK_LISTINGS, { ...base, sort: "cheap" });
-    expect(r[0].price).toBe(12000);
+    expect(r[0]?.price).toBe(12000);
     expect(r.at(-1)?.price).toBe(420000);
   });
   it("applies price range От / До", () => {

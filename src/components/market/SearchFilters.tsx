@@ -77,7 +77,7 @@ export function CategoryPills({
   const cats = mode === "goods" ? GOODS_CATEGORIES : JOB_CATEGORIES;
   const items: { id: string | null; label: string; icon: LucideIcon }[] = [
     { id: null, label: "Все", icon: LayoutGrid },
-    ...cats.map((c) => ({ id: c as string, label: c as string, icon: mode === "goods" ? GOODS_ICONS[c] : JOB_STYLE[c].icon })),
+    ...cats.map((c) => ({ id: c as string, label: c as string, icon: (mode === "goods" ? GOODS_ICONS[c] : JOB_STYLE[c]?.icon) ?? LayoutGrid })),
   ];
   return (
     <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 scrollbar-none">

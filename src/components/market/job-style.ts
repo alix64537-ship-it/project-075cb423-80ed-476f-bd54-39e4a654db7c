@@ -7,4 +7,5 @@ export const JOB_STYLE: Record<string, { icon: LucideIcon; tint: string }> = {
   Стажировка: { icon: GraduationCap, tint: "bg-job-intern text-job-intern-foreground" },
 };
 
-export const jobStyle = (category: string) => JOB_STYLE[category] ?? JOB_STYLE["Полный день"];
+const FALLBACK = { icon: Briefcase, tint: "bg-job-full text-job-full-foreground" };
+export const jobStyle = (category: string) => JOB_STYLE[category] ?? FALLBACK;
