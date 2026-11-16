@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Briefcase, ImagePlus, ShoppingBag, X } from "lucide-react";
+import { Briefcase, ImagePlus, Loader2, ShoppingBag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CITIES, GOODS_CATEGORIES, JOB_CATEGORIES, type Listing, type Mode } from "@/lib/listings";
+import { CITIES, GOODS_CATEGORIES, JOB_CATEGORIES, type Mode } from "@/lib/listings";
+import type { ListingDraft } from "@/lib/market-api";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -14,8 +15,8 @@ type Props = {
   onOpenChange: (o: boolean) => void;
   defaultMode: Mode;
   defaultCity: string;
-  user: { name: string; phone: string } | null;
-  onSubmit: (l: Listing) => void;
+  user: { name: string; phone: string | null; since: string } | null;
+  onSubmit: (draft: ListingDraft, files: File[]) => Promise<void>;
 };
 
 const MAX_IMAGES = 6;
@@ -45,21 +46,23 @@ export function PostAdDialog({ open, onOpenChange, defaultMode, defaultCity, use
   const [description, setDescription] = useState("");
   const [phone, setPhone] = useState("+7 ");
   const [telegram, setTelegram] = useState("");
-  const [images, setImages] = useState<string[]>([]);
+  const [images, setImages] = useState<{ url: string; file: File }[]>([]);
+  const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
     setMode(defaultMode);
     setCity((CITIES as readonly string[]).includes(defaultCity) ? defaultCity : "");
-    if (user) setPhone(user.phone);
+    if (user?.phone) setPhone(user.phone);
   }, [open, defaultMode, defaultCity, user]);
 
   const reset = () => {
     setTitle(""); setCategory(""); setPrice(""); setPriceMax(""); setCompany("");
-    setDescription(""); setTelegram(""); setImages([]); setSubmitted(false);
+    setDescription(""); setTelegram(""); setImages([]); setSubmitted(false); setFileError(null);
   };
 
   const categories = mode === "goods" ? GOODS_CATEGORIES : JOB_CATEGORIES;
@@ -75,8 +78,12 @@ export function PostAdDialog({ open, onOpenChange, defaultMode, defaultCity, use
 
   const addFiles = async (files: FileList | File[]) => {
     const list = Array.from(files).filter((f) => f.type.startsWith("image/")).slice(0, MAX_IMAGES - images.length);
-    const urls = await Promise.all(list.map(readFile));
-    setImages((prev) => [...prev, ...urls].slice(0, MAX_IMAGES));
+    const tooBig = list.filter((f) => f.size > 10 * 1024 * 1024);
+    const ok = list.filter((f) => f.size <= 10 * 1024 * 1024);
+    if (tooBig.length) setFileError("Фото больше 10 МБ не загрузятся");
+    else setFileError(null);
+    const urls = await Promise.all(ok.map(readFile));
+    setImages((prev) => [...prev, ...ok.map((file, i) => ({ url: urls[i]!, file }))].slice(0, MAX_IMAGES));
   };
 
   const switchMode = (m: Mode) => {
@@ -84,35 +91,36 @@ export function PostAdDialog({ open, onOpenChange, defaultMode, defaultCity, use
     setCategory("");
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
-    if (hasErrors) return;
+    if (hasErrors || busy) return;
     const p = toNumber(price);
     const pm = mode === "jobs" ? toNumber(priceMax) : null;
-    const listing: Listing = {
-      id: `u${Date.now().toString(36)}`,
+    const companyName = company.trim() || user?.name || "Работодатель";
+    const draft: ListingDraft = {
       mode,
       title: title.trim(),
       category,
       city,
       price: p,
       priceMax: pm,
-      priceSuffix: mode === "jobs" && (p || pm) ? "/ мес" : undefined,
+      priceSuffix: mode === "jobs" && (p || pm) ? "/ мес" : null,
+      company: mode === "jobs" ? companyName : null,
       description: description.trim(),
-      images,
-      createdAt: Date.now(),
-      company: mode === "jobs" ? company.trim() || user?.name || "Работодатель" : undefined,
-      seller: {
-        name: mode === "jobs" ? company.trim() || user?.name || "Работодатель" : user?.name || "Частное лицо",
-        type: mode === "jobs" ? "Работодатель" : "Частное лицо",
-        since: "на Сауда с 2026 года",
-      },
       phone: phone.trim(),
-      telegram: telegram.trim().replace(/^@/, "") || undefined,
+      telegram: telegram.trim().replace(/^@/, "") || null,
+      sellerName: mode === "jobs" ? companyName : user?.name || "Частное лицо",
+      sellerType: mode === "jobs" ? "Работодатель" : "Частное лицо",
+      sellerSince: user?.since ?? "",
     };
-    onSubmit(listing);
-    reset();
+    setBusy(true);
+    try {
+      await onSubmit(draft, images.map((i) => i.file));
+      reset();
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -234,12 +242,13 @@ export function PostAdDialog({ open, onOpenChange, defaultMode, defaultCity, use
                   <ImagePlus className="size-5" />
                 </span>
                 <p className="text-sm font-medium">Перетащите фото сюда или нажмите, чтобы выбрать</p>
-                <p className="text-xs text-muted-foreground">До {MAX_IMAGES} фото · JPG, PNG</p>
+                <p className="text-xs text-muted-foreground">До {MAX_IMAGES} фото · JPG, PNG · до 10 МБ</p>
                 <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
               </div>
+              {fileError && <p className="text-xs font-medium text-destructive">{fileError}</p>}
               {images.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 pt-2 sm:grid-cols-6">
-                  {images.map((src, i) => (
+                  {images.map(({ url: src }, i) => (
                     <div key={i} className="relative aspect-square overflow-hidden rounded-lg border">
                       <img src={src} alt={`Фото ${i + 1}`} className="size-full object-cover" />
                       {i === 0 && <span className="absolute bottom-1 left-1 rounded bg-primary px-1.5 text-[10px] font-medium text-primary-foreground">Главное</span>}
@@ -266,8 +275,9 @@ export function PostAdDialog({ open, onOpenChange, defaultMode, defaultCity, use
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="h-11 flex-1 rounded-xl sm:flex-none">
               Отмена
             </Button>
-            <Button type="submit" className="h-11 flex-1 rounded-xl shadow-cta">
-              Опубликовать
+            <Button type="submit" disabled={busy} className="h-11 flex-1 rounded-xl shadow-cta">
+              {busy && <Loader2 className="animate-spin" />}
+              {busy ? "Публикуем…" : "Опубликовать"}
             </Button>
           </div>
         </form>

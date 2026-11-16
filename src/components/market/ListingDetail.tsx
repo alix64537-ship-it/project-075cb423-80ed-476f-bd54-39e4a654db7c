@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BadgeCheck, CalendarClock, ChevronLeft, ChevronRight, Clock, MapPin, MessageCircle, Phone, Send, ShieldCheck, Star, Tag } from "lucide-react";
+import { BadgeCheck, CalendarClock, Trash2, ChevronLeft, ChevronRight, Clock, MapPin, MessageCircle, Phone, Send, ShieldCheck, Star, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { formatPrice, type Listing } from "@/lib/listings";
@@ -13,6 +13,8 @@ type Props = {
   onOpenChange: (o: boolean) => void;
   favorite: boolean;
   onToggleFavorite: () => void;
+  canDelete?: boolean;
+  onDelete?: () => Promise<void>;
 };
 
 function maskPhone(p: string) {
@@ -79,9 +81,14 @@ function Gallery({ listing }: { listing: Listing }) {
   );
 }
 
-export function ListingDetail({ listing, onOpenChange, favorite, onToggleFavorite }: Props) {
+export function ListingDetail({ listing, onOpenChange, favorite, onToggleFavorite, canDelete, onDelete }: Props) {
   const [revealed, setRevealed] = useState(false);
-  useEffect(() => setRevealed(false), [listing?.id]);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  useEffect(() => {
+    setRevealed(false);
+    setConfirmDelete(false);
+  }, [listing?.id]);
 
   if (!listing) return null;
   const isJob = listing.mode === "jobs";
@@ -122,7 +129,7 @@ export function ListingDetail({ listing, onOpenChange, favorite, onToggleFavorit
                   <CalendarClock className="size-3.5" />
                   <RelativeDate ts={listing.createdAt} />
                   <span>·</span>
-                  <span>ID {listing.id.toUpperCase()}</span>
+                  <span>№ {listing.id.slice(0, 8).toUpperCase()}</span>
                 </div>
                 <DialogTitle className="text-xl font-semibold leading-snug sm:text-2xl">{listing.title}</DialogTitle>
                 <DialogDescription className="sr-only">Подробности объявления</DialogDescription>
@@ -184,6 +191,38 @@ export function ListingDetail({ listing, onOpenChange, favorite, onToggleFavorit
                   </div>
                 </div>
               </div>
+
+              {canDelete && onDelete && (
+                <div className="rounded-2xl border border-dashed p-4">
+                  <p className="text-sm font-medium">Это ваше объявление</p>
+                  {confirmDelete ? (
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        variant="destructive"
+                        className="h-10 flex-1 rounded-xl"
+                        disabled={deleting}
+                        onClick={async () => {
+                          setDeleting(true);
+                          try {
+                            await onDelete();
+                          } finally {
+                            setDeleting(false);
+                          }
+                        }}
+                      >
+                        Да, удалить
+                      </Button>
+                      <Button variant="outline" className="h-10 flex-1 rounded-xl" onClick={() => setConfirmDelete(false)}>
+                        Отмена
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button variant="ghost" className="mt-2 h-10 px-2 text-destructive hover:text-destructive" onClick={() => setConfirmDelete(true)}>
+                      <Trash2 /> Удалить объявление
+                    </Button>
+                  )}
+                </div>
+              )}
 
               <div className="flex gap-3 rounded-2xl bg-accent p-4 text-sm text-accent-foreground">
                 <ShieldCheck className="mt-0.5 size-5 shrink-0" />

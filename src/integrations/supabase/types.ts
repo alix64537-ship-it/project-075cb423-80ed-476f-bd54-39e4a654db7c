@@ -14,7 +14,125 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      favorites: {
+        Row: {
+          created_at: string
+          listing_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          listing_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          listing_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "favorites_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      listings: {
+        Row: {
+          category: string
+          city: string
+          company: string | null
+          created_at: string
+          description: string
+          id: string
+          images: string[]
+          mode: string
+          phone: string
+          price: number | null
+          price_from: boolean
+          price_max: number | null
+          price_suffix: string | null
+          schedule: string | null
+          seller_name: string
+          seller_rating: number | null
+          seller_since: string | null
+          seller_type: string
+          telegram: string | null
+          title: string
+          user_id: string | null
+        }
+        Insert: {
+          category: string
+          city: string
+          company?: string | null
+          created_at?: string
+          description: string
+          id?: string
+          images?: string[]
+          mode: string
+          phone: string
+          price?: number | null
+          price_from?: boolean
+          price_max?: number | null
+          price_suffix?: string | null
+          schedule?: string | null
+          seller_name: string
+          seller_rating?: number | null
+          seller_since?: string | null
+          seller_type?: string
+          telegram?: string | null
+          title: string
+          user_id?: string | null
+        }
+        Update: {
+          category?: string
+          city?: string
+          company?: string | null
+          created_at?: string
+          description?: string
+          id?: string
+          images?: string[]
+          mode?: string
+          phone?: string
+          price?: number | null
+          price_from?: boolean
+          price_max?: number | null
+          price_suffix?: string | null
+          schedule?: string | null
+          seller_name?: string
+          seller_rating?: number | null
+          seller_since?: string | null
+          seller_type?: string
+          telegram?: string | null
+          title?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string
+          id: string
+          phone: string | null
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string
+          id: string
+          phone?: string | null
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          id?: string
+          phone?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

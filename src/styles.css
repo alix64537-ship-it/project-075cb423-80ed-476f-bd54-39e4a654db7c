@@ -78,6 +78,10 @@
   --color-warning-foreground: var(--warning-foreground);
   --color-surface-dark: var(--surface-dark);
   --color-surface-dark-foreground: var(--surface-dark-foreground);
+  --color-google: var(--google);
+  --color-google-hover: var(--google-hover);
+  --color-google-border: var(--google-border);
+  --color-google-foreground: var(--google-foreground);
   --color-job-gig: var(--job-gig);
   --color-job-gig-foreground: var(--job-gig-foreground);
   --color-job-full: var(--job-full);
@@ -122,6 +126,12 @@
   --warning-foreground: oklch(0.35 0.07 65);
   --surface-dark: oklch(0.24 0.04 200);
   --surface-dark-foreground: oklch(0.97 0.01 180);
+
+  /* Google sign-in button (brand guideline colors) */
+  --google: oklch(1 0 0); /* #FFFFFF */
+  --google-hover: oklch(0.97 0 0);
+  --google-border: oklch(0.56 0.005 150); /* #747775 */
+  --google-foreground: oklch(0.24 0 0); /* #1F1F1F */
 
   /* Job card tints */
   --job-gig: oklch(0.95 0.045 80);

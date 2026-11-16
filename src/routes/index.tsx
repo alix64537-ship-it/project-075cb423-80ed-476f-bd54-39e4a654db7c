@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Heart, Plus, SearchX, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -8,8 +9,17 @@ import { CategoryPills, FilterBar, SearchHero } from "@/components/market/Search
 import { ListingCard } from "@/components/market/ListingCard";
 import { ListingDetail } from "@/components/market/ListingDetail";
 import { PostAdDialog } from "@/components/market/PostAdDialog";
-import { LoginDialog } from "@/components/market/LoginDialog";
-import { ALL_CITIES, filterListings, MOCK_LISTINGS, type Listing, type Mode, type SortKey } from "@/lib/listings";
+import { AuthDialog } from "@/components/market/AuthDialog";
+import { ALL_CITIES, filterListings, type Mode, type SortKey } from "@/lib/listings";
+import {
+  createListing,
+  deleteListing,
+  favoritesQueryOptions,
+  listingsQueryOptions,
+  setFavorite,
+  type ListingDraft,
+} from "@/lib/market-api";
+import { useAuth } from "@/hooks/use-auth";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -28,6 +38,7 @@ export const Route = createFileRoute("/")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
+  loader: ({ context }) => context.queryClient.ensureQueryData(listingsQueryOptions()),
   component: Index,
 });
 
@@ -40,7 +51,12 @@ function pluralListings(n: number, mode: Mode) {
 }
 
 function Index() {
-  const [listings, setListings] = useState<Listing[]>(MOCK_LISTINGS);
+  const queryClient = useQueryClient();
+  const { user, profile, displayName, signOut } = useAuth();
+  const { data: listings } = useSuspenseQuery(listingsQueryOptions());
+  const { data: favoritesData } = useQuery(favoritesQueryOptions(user?.id));
+  const favorites = useMemo(() => (user ? favoritesData ?? new Set<string>() : new Set<string>()), [user, favoritesData]);
+
   const [mode, setMode] = useState<Mode>("goods");
   const [city, setCity] = useState(ALL_CITIES);
   const [category, setCategory] = useState<string | null>(null);
@@ -49,12 +65,19 @@ function Index() {
   const [priceFrom, setPriceFrom] = useState("");
   const [priceTo, setPriceTo] = useState("");
   const [sort, setSort] = useState<SortKey>("new");
-  const [favorites, setFavorites] = useState<Set<string>>(new Set());
-  const [showFavorites, setShowFavorites] = useState(false);
+  const [view, setView] = useState<"all" | "favorites" | "mine">("all");
   const [openId, setOpenId] = useState<string | null>(null);
   const [postOpen, setPostOpen] = useState(false);
-  const [loginOpen, setLoginOpen] = useState(false);
-  const [user, setUser] = useState<{ name: string; phone: string } | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authReason, setAuthReason] = useState<string | null>(null);
+
+  const showFavorites = view === "favorites";
+  const showMine = view === "mine";
+
+  const requireAuth = (reason: string) => {
+    setAuthReason(reason);
+    setAuthOpen(true);
+  };
 
   const visible = useMemo(
     () =>
@@ -67,8 +90,9 @@ function Index() {
         priceTo: priceTo ? Number(priceTo) : null,
         sort,
         onlyIds: showFavorites ? favorites : null,
+        ownerId: showMine ? user?.id : null,
       }),
-    [listings, mode, city, category, query, priceFrom, priceTo, sort, showFavorites, favorites],
+    [listings, mode, city, category, query, priceFrom, priceTo, sort, showFavorites, showMine, favorites, user],
   );
 
   const opened = listings.find((l) => l.id === openId) ?? null;
@@ -80,18 +104,36 @@ function Index() {
     setPriceTo("");
   };
 
+  const favoriteMutation = useMutation({
+    mutationFn: ({ id, value }: { id: string; value: boolean }) => setFavorite(user!.id, id, value),
+    onMutate: async ({ id, value }) => {
+      const key = favoritesQueryOptions(user?.id).queryKey;
+      await queryClient.cancelQueries({ queryKey: key });
+      const prev = queryClient.getQueryData<Set<string>>(key);
+      const next = new Set(prev ?? []);
+      if (value) next.add(id);
+      else next.delete(id);
+      queryClient.setQueryData(key, next);
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      queryClient.setQueryData(favoritesQueryOptions(user?.id).queryKey, ctx?.prev);
+      toast.error("Не удалось обновить избранное");
+    },
+    onSuccess: (_d, { value }) => {
+      if (value) toast.success("Добавлено в избранное");
+      else toast("Удалено из избранного");
+    },
+  });
+
   const toggleFavorite = (id: string) => {
-    setFavorites((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-        toast("Удалено из избранного");
-      } else {
-        next.add(id);
-        toast.success("Добавлено в избранное");
-      }
-      return next;
-    });
+    if (!user) return requireAuth("Войдите, чтобы сохранять объявления в избранное.");
+    favoriteMutation.mutate({ id, value: !favorites.has(id) });
+  };
+
+  const openPost = () => {
+    if (!user) return requireAuth("Войдите, чтобы подать объявление.");
+    setPostOpen(true);
   };
 
   const resetFilters = () => {
@@ -104,19 +146,40 @@ function Index() {
   };
   const canReset = !!(category || priceFrom || priceTo || sort !== "new" || query);
 
-  const handlePublish = (l: Listing) => {
-    setListings((prev) => [l, ...prev]);
-    setPostOpen(false);
-    setMode(l.mode);
-    setCategory(null);
-    setShowFavorites(false);
-    setSort("new");
-    if (city !== ALL_CITIES && city !== l.city) setCity(ALL_CITIES);
-    toast.success("Объявление опубликовано", {
-      description: l.title,
-      action: { label: "Открыть", onClick: () => setOpenId(l.id) },
-    });
+  const handlePublish = async (draft: ListingDraft, files: File[]) => {
+    if (!user) return requireAuth("Войдите, чтобы подать объявление.");
+    try {
+      const id = await createListing(user.id, draft, files);
+      await queryClient.invalidateQueries({ queryKey: ["listings"] });
+      setPostOpen(false);
+      setMode(draft.mode);
+      setCategory(null);
+      setView("all");
+      setSort("new");
+      if (city !== ALL_CITIES && city !== draft.city) setCity(ALL_CITIES);
+      toast.success("Объявление опубликовано", {
+        description: draft.title,
+        action: { label: "Открыть", onClick: () => setOpenId(id) },
+      });
+    } catch {
+      toast.error("Не удалось опубликовать объявление. Попробуйте еще раз.");
+    }
   };
+
+  const handleDelete = async () => {
+    if (!opened) return;
+    try {
+      await deleteListing(opened);
+      setOpenId(null);
+      await queryClient.invalidateQueries({ queryKey: ["listings"] });
+      toast("Объявление удалено");
+    } catch {
+      toast.error("Не удалось удалить объявление");
+    }
+  };
+
+  const sinceYear = user?.created_at ? new Date(user.created_at).getFullYear() : new Date().getFullYear();
+  const postUser = user ? { name: displayName, phone: profile?.phone ?? null, since: `на Сауда с ${sinceYear} года` } : null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -125,16 +188,17 @@ function Index() {
         onModeChange={changeMode}
         city={city}
         onCityChange={setCity}
-        onPost={() => setPostOpen(true)}
-        user={user}
-        onLogin={() => setLoginOpen(true)}
-        onLogout={() => {
-          setUser(null);
-          setShowFavorites(false);
+        onPost={openPost}
+        user={user ? { name: displayName } : null}
+        onLogin={() => requireAuth("")}
+        onLogout={async () => {
+          await signOut();
+          setView("all");
           toast("Вы вышли из профиля");
         }}
         favoritesCount={favorites.size}
-        onShowFavorites={() => setShowFavorites(true)}
+        onShowFavorites={() => setView("favorites")}
+        onShowMine={() => setView("mine")}
       />
 
       <main>
@@ -156,19 +220,19 @@ function Index() {
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-lg font-semibold sm:text-xl">
-              {showFavorites ? "Избранное" : category ?? (mode === "goods" ? "Свежие объявления" : "Свежие вакансии")}
+              {showFavorites ? "Избранное" : showMine ? "Мои объявления" : category ?? (mode === "goods" ? "Свежие объявления" : "Свежие вакансии")}
               <span className="ml-2 align-middle font-sans text-sm font-normal text-muted-foreground">
                 {pluralListings(visible.length, mode)}
                 {city !== ALL_CITIES && ` · ${city}`}
               </span>
             </h2>
-            {showFavorites ? (
-              <Button variant="soft" size="sm" onClick={() => setShowFavorites(false)} className="rounded-full">
+            {view !== "all" ? (
+              <Button variant="soft" size="sm" onClick={() => setView("all")} className="rounded-full">
                 <X /> Показать все
               </Button>
             ) : (
               favorites.size > 0 && (
-                <Button variant="ghost" size="sm" onClick={() => setShowFavorites(true)} className="rounded-full">
+                <Button variant="ghost" size="sm" onClick={() => setView("favorites")} className="rounded-full">
                   <Heart className="fill-favorite text-favorite" /> Избранное · {favorites.size}
                 </Button>
               )
@@ -193,14 +257,21 @@ function Index() {
                 {showFavorites ? <Heart className="size-6" /> : <SearchX className="size-6" />}
               </span>
               <h3 className="mt-4 font-display text-lg font-semibold">
-                {showFavorites ? "В избранном пока пусто" : "Ничего не найдено"}
+                {showFavorites ? "В избранном пока пусто" : showMine ? "Здесь пока нет ваших объявлений" : "Ничего не найдено"}
               </h3>
               <p className="mt-1 max-w-sm text-sm text-muted-foreground">
                 {showFavorites
                   ? "Нажимайте на сердечко в карточке, чтобы сохранить понравившиеся объявления."
-                  : "Попробуйте изменить запрос, город или диапазон цены."}
+                  : showMine
+                    ? "Подайте объявление — оно появится здесь. Проверьте и другую вкладку раздела."
+                    : "Попробуйте изменить запрос, город или диапазон цены."}
               </p>
-              {!showFavorites && canReset && (
+              {showMine && (
+                <Button onClick={openPost} className="mt-5 rounded-xl">
+                  <Plus /> Подать объявление
+                </Button>
+              )}
+              {view === "all" && canReset && (
                 <Button variant="outline" onClick={resetFilters} className="mt-5 rounded-xl">
                   Сбросить фильтры
                 </Button>
@@ -219,7 +290,7 @@ function Index() {
 
       {/* Mobile post button */}
       <div className="fixed inset-x-0 bottom-0 z-30 bg-gradient-to-t from-background via-background/90 to-transparent px-4 pb-4 pt-6 md:hidden">
-        <Button onClick={() => setPostOpen(true)} className="h-12 w-full rounded-xl text-base shadow-cta">
+        <Button onClick={openPost} className="h-12 w-full rounded-xl text-base shadow-cta">
           <Plus /> Подать объявление
         </Button>
       </div>
@@ -229,23 +300,18 @@ function Index() {
         onOpenChange={(o) => !o && setOpenId(null)}
         favorite={opened ? favorites.has(opened.id) : false}
         onToggleFavorite={() => opened && toggleFavorite(opened.id)}
+        canDelete={!!user && !!opened?.userId && opened.userId === user.id}
+        onDelete={handleDelete}
       />
       <PostAdDialog
         open={postOpen}
         onOpenChange={setPostOpen}
         defaultMode={mode}
         defaultCity={city}
-        user={user}
+        user={postUser}
         onSubmit={handlePublish}
       />
-      <LoginDialog
-        open={loginOpen}
-        onOpenChange={setLoginOpen}
-        onLogin={(u) => {
-          setUser(u);
-          toast.success(`Добро пожаловать, ${u.name}!`);
-        }}
-      />
+      <AuthDialog open={authOpen} onOpenChange={setAuthOpen} reason={authReason} />
     </div>
   );
 }

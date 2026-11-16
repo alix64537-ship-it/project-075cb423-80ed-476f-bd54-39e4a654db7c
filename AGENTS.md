@@ -32,5 +32,7 @@ use the editor.
 ## Project rules
 
 - Marketplace data lives in `src/lib/listings.ts` (types, mock data, filter/sort, ₸ formatting) and UI in `src/components/market/`; keep business rules there so they stay unit-testable.
-- Lovable Cloud is connected, but listings, favorites and login are still in-memory page state; when moving them to the database, swap the store, not the components.
+- Listings, favorites, profiles and photos live in Lovable Cloud. Public listing reads go through the `listListings` server function (publishable key, RLS) so the feed SSRs; writes (post, delete, favorite, uploads) use the browser client in `src/lib/market-api.ts` under RLS.
+- The `listing-images` bucket is private (workspace blocks public buckets); images are stored as paths and served via signed URLs rewritten to the browser-reachable backend URL.
+- Auth state comes from `AuthProvider` (`src/hooks/use-auth.tsx`), the single `onAuthStateChange` subscriber; posting and favorites require sign-in.
 - Render posting dates only after hydration (see `RelativeDate`): server and browser time zones differ.

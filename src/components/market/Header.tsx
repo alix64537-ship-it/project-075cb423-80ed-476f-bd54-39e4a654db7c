@@ -1,4 +1,4 @@
-import { Briefcase, Heart, LogOut, MapPin, Plus, ShoppingBag, User } from "lucide-react";
+import { Briefcase, FileText, Heart, LogOut, MapPin, Plus, ShoppingBag, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -23,6 +23,7 @@ type Props = {
   onLogout: () => void;
   favoritesCount: number;
   onShowFavorites: () => void;
+  onShowMine: () => void;
 };
 
 export function Logo() {
@@ -109,6 +110,9 @@ export function Header(p: Props) {
                 <DropdownMenuItem onClick={p.onShowFavorites}>
                   <Heart className="size-4" /> Избранное
                   <span className="ml-auto text-xs text-muted-foreground">{p.favoritesCount}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={p.onShowMine}>
+                  <FileText className="size-4" /> Мои объявления
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={p.onPost}>
                   <Plus className="size-4" /> Новое объявление
