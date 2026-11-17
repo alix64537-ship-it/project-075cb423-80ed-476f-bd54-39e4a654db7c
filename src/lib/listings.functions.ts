@@ -25,6 +25,7 @@ export const listListings = createServerFn({ method: "GET" }).handler(async (): 
   const { data, error } = await supabase
     .from("listings")
     .select("*")
+    .eq("status", "active")
     .order("created_at", { ascending: false })
     .limit(500);
   if (error) throw new Error(error.message);

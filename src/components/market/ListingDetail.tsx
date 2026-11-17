@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { BadgeCheck, CalendarClock, Trash2, ChevronLeft, ChevronRight, Clock, MapPin, MessageCircle, Phone, Send, ShieldCheck, Star, Tag } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { toast } from "sonner";
+import { BadgeCheck, CalendarClock, Check, CheckCircle2, Copy, Inbox, Trash2, ChevronLeft, ChevronRight, Clock, MapPin, MessageCircle, Phone, Send, ShieldCheck, Star, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { formatPrice, type Listing } from "@/lib/listings";
+import { formatPrice, telegramLink, whatsappLink, whatsappPhone, type Listing } from "@/lib/listings";
 import { cn } from "@/lib/utils";
 import { FavoriteButton } from "./ListingCard";
 import { jobStyle } from "./job-style";
@@ -13,8 +15,12 @@ type Props = {
   onOpenChange: (o: boolean) => void;
   favorite: boolean;
   onToggleFavorite: () => void;
-  canDelete?: boolean;
+  /** The signed-in user posted this listing */
+  isOwner?: boolean;
   onDelete?: () => Promise<void>;
+  /** Vacancies: the user already applied */
+  applied?: boolean;
+  onApply?: () => void;
 };
 
 function maskPhone(p: string) {
@@ -81,18 +87,32 @@ function Gallery({ listing }: { listing: Listing }) {
   );
 }
 
-export function ListingDetail({ listing, onOpenChange, favorite, onToggleFavorite, canDelete, onDelete }: Props) {
+export function ListingDetail({ listing, onOpenChange, favorite, onToggleFavorite, isOwner, onDelete, applied, onApply }: Props) {
   const [revealed, setRevealed] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   useEffect(() => {
     setRevealed(false);
+    setCopied(false);
     setConfirmDelete(false);
   }, [listing?.id]);
 
   if (!listing) return null;
   const isJob = listing.mode === "jobs";
-  const digits = listing.phone.replace(/\D/g, "");
+  const phoneDigits = whatsappPhone(listing.phone) ?? listing.phone.replace(/\D/g, "");
+  const wa = whatsappLink(listing.phone, listing);
+  const tg = telegramLink(listing.telegram);
+
+  const copyPhone = async () => {
+    try {
+      await navigator.clipboard.writeText(listing.phone);
+      setCopied(true);
+      toast.success("Номер скопирован");
+    } catch {
+      toast.error("Не удалось скопировать — выделите номер вручную");
+    }
+  };
 
   return (
     <Dialog open={!!listing} onOpenChange={onOpenChange}>
@@ -159,42 +179,70 @@ export function ListingDetail({ listing, onOpenChange, favorite, onToggleFavorit
                 </div>
 
                 <div className="mt-4 space-y-2">
-                  {revealed ? (
-                    <Button asChild size="lg" className="h-12 w-full rounded-xl text-base">
-                      <a href={`tel:+${digits}`}>
-                        <Phone /> {listing.phone}
-                      </a>
-                    </Button>
-                  ) : (
-                    <Button size="lg" onClick={() => setRevealed(true)} className="h-12 w-full rounded-xl text-base shadow-cta">
-                      <Phone /> Показать телефон
-                      <span className="text-sm font-normal opacity-80">{maskPhone(listing.phone)}</span>
-                    </Button>
-                  )}
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button asChild variant="soft" className="h-11 rounded-xl">
-                      <a href={`https://wa.me/${digits}?text=${encodeURIComponent(`Здравствуйте! Пишу по объявлению «${listing.title}» на Сауда`)}`} target="_blank" rel="noreferrer">
-                        <MessageCircle /> WhatsApp
-                      </a>
-                    </Button>
-                    {listing.telegram ? (
-                      <Button asChild variant="soft" className="h-11 rounded-xl">
-                        <a href={`https://t.me/${listing.telegram.replace(/^@/, "")}`} target="_blank" rel="noreferrer">
-                          <Send /> Telegram
-                        </a>
+                  {isJob ? (
+                    isOwner ? (
+                      <Button asChild size="lg" variant="soft" className="h-12 w-full rounded-xl text-base">
+                        <Link to="/profile" search={{ tab: "applications" }}>
+                          <Inbox /> Смотреть отклики
+                        </Link>
+                      </Button>
+                    ) : applied ? (
+                      <Button size="lg" disabled className="h-12 w-full rounded-xl text-base">
+                        <CheckCircle2 /> Вы уже откликнулись
                       </Button>
                     ) : (
-                      <Button variant="soft" className="h-11 rounded-xl" disabled>
-                        <Send /> Telegram
-                      </Button>
-                    )}
-                  </div>
+                      <>
+                        <Button size="lg" onClick={onApply} className="h-12 w-full rounded-xl text-base shadow-cta">
+                          <Send /> Откликнуться на вакансию
+                        </Button>
+                        <p className="text-center text-xs text-muted-foreground">Работодатель получит ваше имя, контакт и сообщение</p>
+                      </>
+                    )
+                  ) : (
+                    <>
+                      {revealed ? (
+                        <div className="flex h-12 items-center gap-2 rounded-xl border border-primary/30 bg-accent pl-4 pr-1.5">
+                          <a href={`tel:+${phoneDigits}`} className="flex min-w-0 flex-1 items-center gap-2 truncate font-display text-lg font-semibold text-accent-foreground">
+                            <Phone className="size-4 shrink-0" /> {listing.phone}
+                          </a>
+                          <Button size="sm" variant="outline" onClick={copyPhone} className="h-9 shrink-0 rounded-lg bg-card" aria-label="Скопировать номер">
+                            {copied ? <Check /> : <Copy />}
+                            {copied ? "Скопировано" : "Копировать"}
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button size="lg" onClick={() => setRevealed(true)} className="h-12 w-full rounded-xl text-base shadow-cta">
+                          <Phone /> Показать телефон
+                          <span className="text-sm font-normal opacity-80">{maskPhone(listing.phone)}</span>
+                        </Button>
+                      )}
+                      {wa && (
+                        <Button asChild variant="soft" className="h-11 w-full rounded-xl">
+                          <a href={wa} target="_blank" rel="noreferrer">
+                            <MessageCircle /> Написать в WhatsApp
+                          </a>
+                        </Button>
+                      )}
+                      {tg && (
+                        <Button asChild variant="soft" className="h-11 w-full rounded-xl">
+                          <a href={tg} target="_blank" rel="noreferrer">
+                            <Send /> Написать в Telegram
+                          </a>
+                        </Button>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
 
-              {canDelete && onDelete && (
+              {isOwner && onDelete && (
                 <div className="rounded-2xl border border-dashed p-4">
-                  <p className="text-sm font-medium">Это ваше объявление</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">{isJob ? "Это ваша вакансия" : "Это ваше объявление"}</p>
+                    <Link to="/profile" search={{ tab: "ads" }} className="text-sm font-medium text-primary hover:underline">
+                      Управлять
+                    </Link>
+                  </div>
                   {confirmDelete ? (
                     <div className="mt-3 flex gap-2">
                       <Button

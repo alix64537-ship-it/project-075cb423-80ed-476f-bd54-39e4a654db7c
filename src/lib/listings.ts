@@ -14,8 +14,12 @@ export const GOODS_CATEGORIES = [
 
 export const JOB_CATEGORIES = ["Подработка", "Полный день", "Удаленка", "Стажировка"] as const;
 
+export type ListingStatus = "active" | "archived";
+
 export type Listing = {
   id: string;
+  /** "archived" = sold / vacancy closed; only the owner sees it */
+  status?: ListingStatus | undefined;
   /** Author's account id; null for demo listings */
   userId?: string | null | undefined;
   mode: Mode;
@@ -84,12 +88,14 @@ export type ListingRow = {
   seller_since: string | null;
   seller_rating: number | null;
   created_at: string;
+  status?: string | null | undefined;
 };
 
 /** Converts a database row into the app's Listing shape. `resolveImage` turns a storage path into a viewable URL. */
 export function rowToListing(row: ListingRow, resolveImage: (path: string) => string | undefined): Listing {
   return {
     id: row.id,
+    status: row.status === "archived" ? "archived" : "active",
     userId: row.user_id,
     mode: row.mode === "jobs" ? "jobs" : "goods",
     title: row.title,
@@ -164,3 +170,79 @@ export function filterListings(items: Listing[], f: Filters): Listing[] {
   });
 }
 
+
+// ---------- Contacts ----------
+
+/** Digits for wa.me in international format; Kazakh numbers starting with 8 become 7. null if too short. */
+export function whatsappPhone(phone: string): string | null {
+  let d = phone.replace(/\D/g, "");
+  if (d.length === 11 && d.startsWith("8")) d = `7${d.slice(1)}`;
+  else if (d.length === 10) d = `7${d}`;
+  return d.length >= 11 && d.length <= 15 ? d : null;
+}
+
+export function whatsappLink(phone: string, listing: Pick<Listing, "title" | "price" | "priceMax" | "priceFrom" | "priceSuffix">): string | null {
+  const d = whatsappPhone(phone);
+  if (!d) return null;
+  const text = `Здравствуйте! Пишу по вашему объявлению «${listing.title}» (${formatPrice(listing)}) на Сауда. Оно еще актуально?`;
+  return `https://wa.me/${d}?text=${encodeURIComponent(text)}`;
+}
+
+/** Accepts "@name", "name" or a t.me link. Returns the bare username, or null if it is not a valid Telegram username. */
+export function normalizeTelegram(input: string | null | undefined): string | null {
+  const v = (input ?? "")
+    .trim()
+    .replace(/^(https?:\/\/)?(www\.)?(t\.me|telegram\.me)\//i, "")
+    .replace(/^@/, "")
+    .replace(/\/+$/, "");
+  return /^[A-Za-z0-9_]{5,32}$/.test(v) ? v : null;
+}
+
+export function telegramLink(username: string | null | undefined): string | null {
+  const u = normalizeTelegram(username);
+  return u ? `https://t.me/${u}` : null;
+}
+
+/** Turns a free-form applicant contact ("+7 701…" or "@nick") into clickable links. */
+export function contactLinks(contact: string): { tel: string | null; whatsapp: string | null; telegram: string | null } {
+  const hasLetters = /[A-Za-z]/.test(contact);
+  const phone = hasLetters ? null : whatsappPhone(contact);
+  return {
+    tel: phone ? `tel:+${phone}` : null,
+    whatsapp: phone ? `https://wa.me/${phone}` : null,
+    telegram: hasLetters ? telegramLink(contact) : null,
+  };
+}
+
+// ---------- Job applications ----------
+
+export type JobApplication = {
+  id: string;
+  listingId: string;
+  applicantName: string;
+  contactInfo: string;
+  message: string;
+  createdAt: number;
+};
+
+/** Groups applications under the employer's vacancies: vacancies with the newest applications first, empty ones last. */
+export function groupApplications(vacancies: Listing[], applications: JobApplication[]) {
+  const byListing = new Map<string, JobApplication[]>();
+  for (const a of applications) {
+    const list = byListing.get(a.listingId) ?? [];
+    list.push(a);
+    byListing.set(a.listingId, list);
+  }
+  return vacancies
+    .filter((v) => v.mode === "jobs")
+    .map((listing) => ({
+      listing,
+      applications: (byListing.get(listing.id) ?? []).sort((a, b) => b.createdAt - a.createdAt),
+    }))
+    .sort((a, b) => {
+      const la = a.applications[0]?.createdAt ?? -1;
+      const lb = b.applications[0]?.createdAt ?? -1;
+      if (la !== lb) return lb - la;
+      return b.listing.createdAt - a.listing.createdAt;
+    });
+}

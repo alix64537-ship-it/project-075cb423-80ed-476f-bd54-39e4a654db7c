@@ -40,6 +40,44 @@ export type Database = {
           },
         ]
       }
+      job_applications: {
+        Row: {
+          applicant_id: string
+          applicant_name: string
+          contact_info: string
+          created_at: string
+          id: string
+          listing_id: string
+          message: string
+        }
+        Insert: {
+          applicant_id: string
+          applicant_name: string
+          contact_info: string
+          created_at?: string
+          id?: string
+          listing_id: string
+          message?: string
+        }
+        Update: {
+          applicant_id?: string
+          applicant_name?: string
+          contact_info?: string
+          created_at?: string
+          id?: string
+          listing_id?: string
+          message?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_applications_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       listings: {
         Row: {
           category: string
@@ -60,6 +98,7 @@ export type Database = {
           seller_rating: number | null
           seller_since: string | null
           seller_type: string
+          status: string
           telegram: string | null
           title: string
           user_id: string | null
@@ -83,6 +122,7 @@ export type Database = {
           seller_rating?: number | null
           seller_since?: string | null
           seller_type?: string
+          status?: string
           telegram?: string | null
           title: string
           user_id?: string | null
@@ -106,6 +146,7 @@ export type Database = {
           seller_rating?: number | null
           seller_since?: string | null
           seller_type?: string
+          status?: string
           telegram?: string | null
           title?: string
           user_id?: string | null
@@ -114,22 +155,28 @@ export type Database = {
       }
       profiles: {
         Row: {
+          city: string | null
           created_at: string
           display_name: string
           id: string
           phone: string | null
+          telegram: string | null
         }
         Insert: {
+          city?: string | null
           created_at?: string
           display_name?: string
           id: string
           phone?: string | null
+          telegram?: string | null
         }
         Update: {
+          city?: string | null
           created_at?: string
           display_name?: string
           id?: string
           phone?: string | null
+          telegram?: string | null
         }
         Relationships: []
       }

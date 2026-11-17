@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
-type Profile = { display_name: string; phone: string | null };
+export type Profile = { display_name: string; phone: string | null; telegram: string | null; city: string | null };
 
 type AuthState = {
   user: User | null;
@@ -19,6 +19,9 @@ type AuthState = {
 const globalKey = "__saudaAuthContext";
 const store = globalThis as unknown as Record<string, React.Context<AuthState | null> | undefined>;
 const AuthContext = (store[globalKey] ??= createContext<AuthState | null>(null));
+
+/** Per-user caches: refreshed on sign-in, dropped on sign-out. */
+const PRIVATE_KEYS = ["favorites", "favorite-listings", "profile", "my-listings", "my-applications", "received-applications"];
 
 const SIGNED_OUT: AuthState = {
   user: null,
@@ -38,8 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       setReady(true);
       if (event === "SIGNED_IN" || event === "USER_UPDATED") {
-        void queryClient.invalidateQueries({ queryKey: ["favorites"] });
-        void queryClient.invalidateQueries({ queryKey: ["profile"] });
+        for (const key of PRIVATE_KEYS) void queryClient.invalidateQueries({ queryKey: [key] });
       }
     });
     void supabase.auth.getSession().then(({ data }) => {
@@ -55,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("display_name, phone")
+        .select("display_name, phone, telegram, city")
         .eq("id", user!.id)
         .maybeSingle();
       if (error) throw error;
@@ -64,9 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const signOut = async () => {
-    await queryClient.cancelQueries({ queryKey: ["favorites"] });
-    queryClient.removeQueries({ queryKey: ["favorites"] });
-    queryClient.removeQueries({ queryKey: ["profile"] });
+    await queryClient.cancelQueries();
+    for (const key of PRIVATE_KEYS) queryClient.removeQueries({ queryKey: [key] });
     await supabase.auth.signOut();
   };
 
