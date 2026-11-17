@@ -49,6 +49,7 @@ export function ListingCard({ listing, favorite, onToggleFavorite, onOpen }: Pro
   return (
     <article
       role="button"
+      aria-label={listing.title}
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
