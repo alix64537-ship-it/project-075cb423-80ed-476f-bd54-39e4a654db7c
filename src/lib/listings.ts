@@ -246,3 +246,11 @@ export function groupApplications(vacancies: Listing[], applications: JobApplica
       return b.listing.createdAt - a.listing.createdAt;
     });
 }
+
+/** Russian plural: pluralRu(5, ["отклик", "отклика", "откликов"]) → "5 откликов". */
+export function pluralRu(n: number, forms: readonly [string, string, string]): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  const f = m10 === 1 && m100 !== 11 ? forms[0] : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? forms[1] : forms[2];
+  return `${n} ${f}`;
+}

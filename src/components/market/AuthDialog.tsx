@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Loader2, MailCheck } from "lucide-react";
 import { toast } from "sonner";
 import "@lovable.dev/cloud-auth-js/styles.css";
@@ -14,6 +14,15 @@ type Props = {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   reason?: string | null | undefined;
+};
+
+type FormProps = {
+  reason?: string | null | undefined;
+  /** Called after a successful sign-in */
+  onDone: () => void;
+  /** Same-site path a full-page social sign-in returns to; defaults to the site root */
+  oauthReturnPath?: string;
+  heading: (title: string, description: string) => ReactNode;
 };
 
 type View = "signin" | "signup" | "forgot" | "check-email";
@@ -40,6 +49,27 @@ function GoogleLogo() {
 }
 
 export function AuthDialog({ open, onOpenChange, reason }: Props) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[100dvh] max-w-sm overflow-y-auto rounded-2xl">
+        {open && (
+          <AuthForm
+            reason={reason}
+            onDone={() => onOpenChange(false)}
+            heading={(title, description) => (
+              <DialogHeader className="text-left">
+                <DialogTitle className="font-display text-xl">{title}</DialogTitle>
+                <DialogDescription>{description}</DialogDescription>
+              </DialogHeader>
+            )}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function AuthForm({ reason, onDone, oauthReturnPath, heading }: FormProps) {
   const [view, setView] = useState<View>("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -47,23 +77,15 @@ export function AuthDialog({ open, onOpenChange, reason }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (open) {
-      setView("signin");
-      setError(null);
-      setPassword("");
-    }
-  }, [open]);
-
   const social = async (provider: "google" | "lovable") => {
     setError(null);
-    const result = await lovable.auth.signInWithOAuth(provider, { redirect_uri: window.location.origin });
+    const result = await lovable.auth.signInWithOAuth(provider, { redirect_uri: `${window.location.origin}${oauthReturnPath ?? ""}` });
     if (result.error) {
       setError("Не удалось войти. Попробуйте еще раз");
       return;
     }
     if (result.redirected) return;
-    onOpenChange(false);
+    onDone();
     toast.success("Вы вошли в Сауда");
   };
 
@@ -75,7 +97,7 @@ export function AuthDialog({ open, onOpenChange, reason }: Props) {
       if (view === "signin") {
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) return setError(ru(error.message));
-        onOpenChange(false);
+        onDone();
         toast.success("Вы вошли в Сауда");
       } else if (view === "signup") {
         const { data, error } = await supabase.auth.signUp({
@@ -85,7 +107,7 @@ export function AuthDialog({ open, onOpenChange, reason }: Props) {
         });
         if (error) return setError(ru(error.message));
         if (data.session) {
-          onOpenChange(false);
+          onDone();
           toast.success(`Добро пожаловать, ${name.trim()}!`);
         } else setView("check-email");
       } else if (view === "forgot") {
@@ -107,19 +129,16 @@ export function AuthDialog({ open, onOpenChange, reason }: Props) {
     "check-email": "Проверьте почту",
   };
 
+  const description =
+    view === "check-email"
+      ? `Мы отправили письмо на ${email}. Перейдите по ссылке в нем, чтобы продолжить.`
+      : view === "forgot"
+        ? "Укажите email — пришлем ссылку для нового пароля."
+        : reason || "Подавайте объявления, сохраняйте избранное и общайтесь с продавцами.";
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[100dvh] max-w-sm overflow-y-auto rounded-2xl">
-        <DialogHeader className="text-left">
-          <DialogTitle className="font-display text-xl">{titles[view]}</DialogTitle>
-          <DialogDescription>
-            {view === "check-email"
-              ? `Мы отправили письмо на ${email}. Перейдите по ссылке в нем, чтобы продолжить.`
-              : view === "forgot"
-                ? "Укажите email — пришлем ссылку для нового пароля."
-                : reason || "Подавайте объявления, сохраняйте избранное и общайтесь с продавцами."}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      {heading(titles[view], description)}
 
         {view === "check-email" ? (
           <div className="flex flex-col items-center gap-4 py-2">
@@ -211,7 +230,6 @@ export function AuthDialog({ open, onOpenChange, reason }: Props) {
             </form>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CITIES, GOODS_CATEGORIES, JOB_CATEGORIES, type Mode } from "@/lib/listings";
+import { CITIES, GOODS_CATEGORIES, JOB_CATEGORIES, normalizeTelegram, type Mode } from "@/lib/listings";
 import type { ListingDraft } from "@/lib/market-api";
 import { cn } from "@/lib/utils";
 
@@ -15,7 +15,7 @@ type Props = {
   onOpenChange: (o: boolean) => void;
   defaultMode: Mode;
   defaultCity: string;
-  user: { name: string; phone: string | null; since: string } | null;
+  user: { name: string; phone: string | null; telegram: string | null; city: string | null; since: string } | null;
   onSubmit: (draft: ListingDraft, files: File[]) => Promise<void>;
 };
 
@@ -56,8 +56,10 @@ export function PostAdDialog({ open, onOpenChange, defaultMode, defaultCity, use
   useEffect(() => {
     if (!open) return;
     setMode(defaultMode);
-    setCity((CITIES as readonly string[]).includes(defaultCity) ? defaultCity : "");
+    const cities = CITIES as readonly string[];
+    setCity(cities.includes(defaultCity) ? defaultCity : user?.city && cities.includes(user.city) ? user.city : "");
     if (user?.phone) setPhone(user.phone);
+    if (user?.telegram) setTelegram((t) => t || `@${user.telegram}`);
   }, [open, defaultMode, defaultCity, user]);
 
   const reset = () => {
@@ -109,7 +111,7 @@ export function PostAdDialog({ open, onOpenChange, defaultMode, defaultCity, use
       company: mode === "jobs" ? companyName : null,
       description: description.trim(),
       phone: phone.trim(),
-      telegram: telegram.trim().replace(/^@/, "") || null,
+      telegram: normalizeTelegram(telegram) ?? (telegram.trim().replace(/^@/, "") || null),
       sellerName: mode === "jobs" ? companyName : user?.name || "Частное лицо",
       sellerType: mode === "jobs" ? "Работодатель" : "Частное лицо",
       sellerSince: user?.since ?? "",

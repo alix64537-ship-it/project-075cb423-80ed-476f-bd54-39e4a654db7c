@@ -1,27 +1,24 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { Heart, Plus, SearchX, X } from "lucide-react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { Heart, Plus, SearchX } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Header, Logo } from "@/components/market/Header";
 import { CategoryPills, FilterBar, SearchHero } from "@/components/market/SearchFilters";
 import { ListingCard } from "@/components/market/ListingCard";
-import { ListingDetail } from "@/components/market/ListingDetail";
+import { ListingViewer } from "@/components/market/ListingViewer";
 import { PostAdDialog } from "@/components/market/PostAdDialog";
 import { AuthDialog } from "@/components/market/AuthDialog";
-import { ALL_CITIES, filterListings, type Mode, type SortKey } from "@/lib/listings";
-import {
-  createListing,
-  deleteListing,
-  favoritesQueryOptions,
-  listingsQueryOptions,
-  setFavorite,
-  type ListingDraft,
-} from "@/lib/market-api";
+import { ALL_CITIES, CITIES, filterListings, type Mode, type SortKey } from "@/lib/listings";
+import { createListing, listingsQueryOptions, type ListingDraft } from "@/lib/market-api";
 import { useAuth } from "@/hooks/use-auth";
+import { useFavorites } from "@/hooks/use-favorites";
 
 export const Route = createFileRoute("/")({
+  /** ?post=goods|jobs opens the "new ad" form (used by links from the profile) */
+  validateSearch: (s: Record<string, unknown>): { post?: Mode } =>
+    s["post"] === "goods" || s["post"] === "jobs" ? { post: s["post"] } : {},
   head: () => ({
     meta: [
       { title: "Сауда — объявления, работа и подработка в Казахстане" },
@@ -52,10 +49,10 @@ function pluralListings(n: number, mode: Mode) {
 
 function Index() {
   const queryClient = useQueryClient();
-  const { user, profile, displayName, signOut } = useAuth();
+  const navigate = useNavigate();
+  const { post } = Route.useSearch();
+  const { user, profile, ready, displayName, signOut } = useAuth();
   const { data: listings } = useSuspenseQuery(listingsQueryOptions());
-  const { data: favoritesData } = useQuery(favoritesQueryOptions(user?.id));
-  const favorites = useMemo(() => (user ? favoritesData ?? new Set<string>() : new Set<string>()), [user, favoritesData]);
 
   const [mode, setMode] = useState<Mode>("goods");
   const [city, setCity] = useState(ALL_CITIES);
@@ -65,19 +62,38 @@ function Index() {
   const [priceFrom, setPriceFrom] = useState("");
   const [priceTo, setPriceTo] = useState("");
   const [sort, setSort] = useState<SortKey>("new");
-  const [view, setView] = useState<"all" | "favorites" | "mine">("all");
   const [openId, setOpenId] = useState<string | null>(null);
   const [postOpen, setPostOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authReason, setAuthReason] = useState<string | null>(null);
 
-  const showFavorites = view === "favorites";
-  const showMine = view === "mine";
-
   const requireAuth = (reason: string) => {
     setAuthReason(reason);
     setAuthOpen(true);
   };
+  const { favorites, toggle: toggleFavorite } = useFavorites(requireAuth);
+
+  // Start the feed in the user's default city (once, and only if they haven't picked one yet)
+  const cityTouched = useRef(false);
+  useEffect(() => {
+    if (cityTouched.current || !profile?.city) return;
+    if ((CITIES as readonly string[]).includes(profile.city)) setCity(profile.city);
+    cityTouched.current = true;
+  }, [profile?.city]);
+  const changeCity = (c: string) => {
+    cityTouched.current = true;
+    setCity(c);
+  };
+
+  // Links like /?post=jobs open the posting form
+  useEffect(() => {
+    if (!post || !ready) return;
+    changeMode(post);
+    if (user) setPostOpen(true);
+    else requireAuth("Войдите, чтобы подать объявление.");
+    void navigate({ to: "/", search: {}, replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [post, ready, user]);
 
   const visible = useMemo(
     () =>
@@ -89,47 +105,18 @@ function Index() {
         priceFrom: priceFrom ? Number(priceFrom) : null,
         priceTo: priceTo ? Number(priceTo) : null,
         sort,
-        onlyIds: showFavorites ? favorites : null,
-        ownerId: showMine ? user?.id : null,
       }),
-    [listings, mode, city, category, query, priceFrom, priceTo, sort, showFavorites, showMine, favorites, user],
+    [listings, mode, city, category, query, priceFrom, priceTo, sort],
   );
 
   const opened = listings.find((l) => l.id === openId) ?? null;
 
-  const changeMode = (m: Mode) => {
+  function changeMode(m: Mode) {
     setMode(m);
     setCategory(null);
     setPriceFrom("");
     setPriceTo("");
-  };
-
-  const favoriteMutation = useMutation({
-    mutationFn: ({ id, value }: { id: string; value: boolean }) => setFavorite(user!.id, id, value),
-    onMutate: async ({ id, value }) => {
-      const key = favoritesQueryOptions(user?.id).queryKey;
-      await queryClient.cancelQueries({ queryKey: key });
-      const prev = queryClient.getQueryData<Set<string>>(key);
-      const next = new Set(prev ?? []);
-      if (value) next.add(id);
-      else next.delete(id);
-      queryClient.setQueryData(key, next);
-      return { prev };
-    },
-    onError: (_e, _v, ctx) => {
-      queryClient.setQueryData(favoritesQueryOptions(user?.id).queryKey, ctx?.prev);
-      toast.error("Не удалось обновить избранное");
-    },
-    onSuccess: (_d, { value }) => {
-      if (value) toast.success("Добавлено в избранное");
-      else toast("Удалено из избранного");
-    },
-  });
-
-  const toggleFavorite = (id: string) => {
-    if (!user) return requireAuth("Войдите, чтобы сохранять объявления в избранное.");
-    favoriteMutation.mutate({ id, value: !favorites.has(id) });
-  };
+  }
 
   const openPost = () => {
     if (!user) return requireAuth("Войдите, чтобы подать объявление.");
@@ -150,11 +137,13 @@ function Index() {
     if (!user) return requireAuth("Войдите, чтобы подать объявление.");
     try {
       const id = await createListing(user.id, draft, files);
-      await queryClient.invalidateQueries({ queryKey: ["listings"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["listings"] }),
+        queryClient.invalidateQueries({ queryKey: ["my-listings"] }),
+      ]);
       setPostOpen(false);
       setMode(draft.mode);
       setCategory(null);
-      setView("all");
       setSort("new");
       if (city !== ALL_CITIES && city !== draft.city) setCity(ALL_CITIES);
       toast.success("Объявление опубликовано", {
@@ -166,20 +155,10 @@ function Index() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!opened) return;
-    try {
-      await deleteListing(opened);
-      setOpenId(null);
-      await queryClient.invalidateQueries({ queryKey: ["listings"] });
-      toast("Объявление удалено");
-    } catch {
-      toast.error("Не удалось удалить объявление");
-    }
-  };
-
   const sinceYear = user?.created_at ? new Date(user.created_at).getFullYear() : new Date().getFullYear();
-  const postUser = user ? { name: displayName, phone: profile?.phone ?? null, since: `на Сауда с ${sinceYear} года` } : null;
+  const postUser = user
+    ? { name: displayName, phone: profile?.phone ?? null, telegram: profile?.telegram ?? null, city: profile?.city ?? null, since: `на Сауда с ${sinceYear} года` }
+    : null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -187,18 +166,15 @@ function Index() {
         mode={mode}
         onModeChange={changeMode}
         city={city}
-        onCityChange={setCity}
+        onCityChange={changeCity}
         onPost={openPost}
         user={user ? { name: displayName } : null}
         onLogin={() => requireAuth("")}
         onLogout={async () => {
           await signOut();
-          setView("all");
           toast("Вы вышли из профиля");
         }}
         favoritesCount={favorites.size}
-        onShowFavorites={() => setView("favorites")}
-        onShowMine={() => setView("mine")}
       />
 
       <main>
@@ -220,22 +196,18 @@ function Index() {
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-lg font-semibold sm:text-xl">
-              {showFavorites ? "Избранное" : showMine ? "Мои объявления" : category ?? (mode === "goods" ? "Свежие объявления" : "Свежие вакансии")}
+              {category ?? (mode === "goods" ? "Свежие объявления" : "Свежие вакансии")}
               <span className="ml-2 align-middle font-sans text-sm font-normal text-muted-foreground">
                 {pluralListings(visible.length, mode)}
                 {city !== ALL_CITIES && ` · ${city}`}
               </span>
             </h2>
-            {view !== "all" ? (
-              <Button variant="soft" size="sm" onClick={() => setView("all")} className="rounded-full">
-                <X /> Показать все
-              </Button>
-            ) : (
-              favorites.size > 0 && (
-                <Button variant="ghost" size="sm" onClick={() => setView("favorites")} className="rounded-full">
+            {favorites.size > 0 && (
+              <Button asChild variant="ghost" size="sm" className="rounded-full">
+                <Link to="/profile" search={{ tab: "favorites" }}>
                   <Heart className="fill-favorite text-favorite" /> Избранное · {favorites.size}
-                </Button>
-              )
+                </Link>
+              </Button>
             )}
           </div>
 
@@ -254,24 +226,11 @@ function Index() {
           ) : (
             <div className="flex flex-col items-center rounded-2xl border border-dashed bg-card px-6 py-14 text-center">
               <span className="grid size-14 place-items-center rounded-full bg-accent text-accent-foreground">
-                {showFavorites ? <Heart className="size-6" /> : <SearchX className="size-6" />}
+                <SearchX className="size-6" />
               </span>
-              <h3 className="mt-4 font-display text-lg font-semibold">
-                {showFavorites ? "В избранном пока пусто" : showMine ? "Здесь пока нет ваших объявлений" : "Ничего не найдено"}
-              </h3>
-              <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                {showFavorites
-                  ? "Нажимайте на сердечко в карточке, чтобы сохранить понравившиеся объявления."
-                  : showMine
-                    ? "Подайте объявление — оно появится здесь. Проверьте и другую вкладку раздела."
-                    : "Попробуйте изменить запрос, город или диапазон цены."}
-              </p>
-              {showMine && (
-                <Button onClick={openPost} className="mt-5 rounded-xl">
-                  <Plus /> Подать объявление
-                </Button>
-              )}
-              {view === "all" && canReset && (
+              <h3 className="mt-4 font-display text-lg font-semibold">Ничего не найдено</h3>
+              <p className="mt-1 max-w-sm text-sm text-muted-foreground">Попробуйте изменить запрос, город или диапазон цены.</p>
+              {canReset && (
                 <Button variant="outline" onClick={resetFilters} className="mt-5 rounded-xl">
                   Сбросить фильтры
                 </Button>
@@ -295,14 +254,7 @@ function Index() {
         </Button>
       </div>
 
-      <ListingDetail
-        listing={opened}
-        onOpenChange={(o) => !o && setOpenId(null)}
-        favorite={opened ? favorites.has(opened.id) : false}
-        onToggleFavorite={() => opened && toggleFavorite(opened.id)}
-        canDelete={!!user && !!opened?.userId && opened.userId === user.id}
-        onDelete={handleDelete}
-      />
+      <ListingViewer listing={opened} onClose={() => setOpenId(null)} onRequireAuth={requireAuth} />
       <PostAdDialog
         open={postOpen}
         onOpenChange={setPostOpen}
